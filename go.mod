@@ -1,4 +1,4 @@
-module github.com/rabingaire/go-vader
+module github.com/rabingaire/vader
 
 go 1.12
 

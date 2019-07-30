@@ -21,8 +21,8 @@ const (
 	cIncr   = 0.733
 	nScalar = -0.74
 
-	lexiconFile      = "./vader/vader_lexicon.txt"
-	emojiLexiconFile = "./vader/emoji_utf8_lexicon.txt"
+	lexiconFile      = "./vader_lexicon.txt"
+	emojiLexiconFile = "./emoji_utf8_lexicon.txt"
 
 	alpha     = 15   //constant for normalize
 	includeNt = true //flag to check "n't" in negated
