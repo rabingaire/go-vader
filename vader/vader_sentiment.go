@@ -2,37 +2,39 @@ package vader
 
 import (
 	"fmt"
-	"github.com/gonum/floats"
 	"io/ioutil"
 	"log"
 	"math"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/gonum/floats"
 )
 
 const (
 	//(empirically derived mean sentiment intensity rating increase for booster words)
-	B_INCR = 0.293
-	B_DECR = -0.293
+	bIncr = 0.293
+	bDecr = -0.293
 
 	//(empirically derived mean sentiment intensity rating increase for using ALLCAPs to emphasize a word)
-	C_INCR   = 0.733
-	N_SCALAR = -0.74
+	cIncr   = 0.733
+	nScalar = -0.74
 
-	lexicon_file       = "/src/github.com/drankou/go-vader/vader/vader_lexicon.txt"
-	emoji_lexicon_file = "/src/github.com/drankou/go-vader/vader/emoji_utf8_lexicon.txt"
+	lexiconFile      = "./vader/vader_lexicon.txt"
+	emojiLexiconFile = "./vader/emoji_utf8_lexicon.txt"
 
-	alpha      = 15   //constant for normalize
-	include_nt = true //flag to check "n't" in negated
+	alpha     = 15   //constant for normalize
+	includeNt = true //flag to check "n't" in negated
 )
 
-//for removing punctuation
+// RegexRemovePunctuation for removing punctuation
 var RegexRemovePunctuation = regexp.MustCompile(fmt.Sprintf("[%s]", regexp.QuoteMeta(`!"//$%&'#()*+,-./:;<=>?@[\]^_{|}~`+"`")))
 
+// Punctuations ..
 var Punctuations = []string{".", "..", "...", "!", "?", ",", ";", ":", "-", "'", "\"", "!!", "!!!", "??", "???", "?!?", "!?!", "?!?!", "!?!?", "????", "?????"}
 
+// Negations ..
 var Negations = []string{"aint", "arent", "cannot", "cant", "couldnt", "darent", "didnt", "doesnt",
 	"ain't", "aren't", "can't", "couldn't", "daren't", "didn't", "doesn't",
 	"dont", "hadnt", "hasnt", "havent", "isnt", "mightnt", "mustnt", "neither",
@@ -42,34 +44,34 @@ var Negations = []string{"aint", "arent", "cannot", "cant", "couldnt", "darent",
 	"oughtn't", "shan't", "shouldn't", "uh-uh", "wasn't", "weren't",
 	"without", "wont", "wouldnt", "won't", "wouldn't", "rarely", "seldom", "despite"}
 
-// booster/dampener 'intensifiers' or 'degree adverbs'
+// BoosterMap booster/dampener 'intensifiers' or 'degree adverbs'
 // http://en.wiktionary.org/wiki/Category:English_degree_adverbs
-var BoosterMap = map[string]float64{"absolutely": B_INCR, "amazingly": B_INCR, "awfully": B_INCR, "completely": B_INCR, "considerably": B_INCR,
-	"decidedly": B_INCR, "deeply": B_INCR, "effing": B_INCR, "enormously": B_INCR,
-	"entirely": B_INCR, "especially": B_INCR, "exceptionally": B_INCR, "extremely": B_INCR,
-	"fabulously": B_INCR, "flipping": B_INCR, "flippin": B_INCR,
-	"fricking": B_INCR, "frickin": B_INCR, "frigging": B_INCR, "friggin": B_INCR, "fully": B_INCR, "fucking": B_INCR,
-	"greatly": B_INCR, "hella": B_INCR, "highly": B_INCR, "hugely": B_INCR, "incredibly": B_INCR,
-	"intensely": B_INCR, "majorly": B_INCR, "more": B_INCR, "most": B_INCR, "particularly": B_INCR,
-	"purely": B_INCR, "quite": B_INCR, "really": B_INCR, "remarkably": B_INCR,
-	"so": B_INCR, "substantially": B_INCR,
-	"thoroughly": B_INCR, "totally": B_INCR, "tremendously": B_INCR,
-	"uber": B_INCR, "unbelievably": B_INCR, "unusually": B_INCR, "utterly": B_INCR,
-	"very":   B_INCR,
-	"almost": B_DECR, "barely": B_DECR, "hardly": B_DECR, "just enough": B_DECR,
-	"kind of": B_DECR, "kinda": B_DECR, "kindof": B_DECR, "kind-of": B_DECR,
-	"less": B_DECR, "little": B_DECR, "marginally": B_DECR, "occasionally": B_DECR, "partly": B_DECR,
-	"scarcely": B_DECR, "slightly": B_DECR, "somewhat": B_DECR,
-	"sort of": B_DECR, "sorta": B_DECR, "sortof": B_DECR, "sort-of": B_DECR}
+var BoosterMap = map[string]float64{"absolutely": bIncr, "amazingly": bIncr, "awfully": bIncr, "completely": bIncr, "considerably": bIncr,
+	"decidedly": bIncr, "deeply": bIncr, "effing": bIncr, "enormously": bIncr,
+	"entirely": bIncr, "especially": bIncr, "exceptionally": bIncr, "extremely": bIncr,
+	"fabulously": bIncr, "flipping": bIncr, "flippin": bIncr,
+	"fricking": bIncr, "frickin": bIncr, "frigging": bIncr, "friggin": bIncr, "fully": bIncr, "fucking": bIncr,
+	"greatly": bIncr, "hella": bIncr, "highly": bIncr, "hugely": bIncr, "incredibly": bIncr,
+	"intensely": bIncr, "majorly": bIncr, "more": bIncr, "most": bIncr, "particularly": bIncr,
+	"purely": bIncr, "quite": bIncr, "really": bIncr, "remarkably": bIncr,
+	"so": bIncr, "substantially": bIncr,
+	"thoroughly": bIncr, "totally": bIncr, "tremendously": bIncr,
+	"uber": bIncr, "unbelievably": bIncr, "unusually": bIncr, "utterly": bIncr,
+	"very":   bIncr,
+	"almost": bDecr, "barely": bDecr, "hardly": bDecr, "just enough": bDecr,
+	"kind of": bDecr, "kinda": bDecr, "kindof": bDecr, "kind-of": bDecr,
+	"less": bDecr, "little": bDecr, "marginally": bDecr, "occasionally": bDecr, "partly": bDecr,
+	"scarcely": bDecr, "slightly": bDecr, "somewhat": bDecr,
+	"sort of": bDecr, "sorta": bDecr, "sortof": bDecr, "sort-of": bDecr}
 
-// check for sentiment laden idioms that do not contain lexicon words (future work, not yet implemented)
+// SentimentLadenIdioms check for sentiment laden idioms that do not contain lexicon words (future work, not yet implemented)
 var SentimentLadenIdioms = map[string]int{"cut the mustard": 2, "hand to mouth": -2,
 	"back handed": -2, "blow smoke": -2, "blowing smoke": -2,
 	"upper hand": 1, "break a leg": 2,
 	"cooking with gas": 2, "in the black": 2, "in the red": -2,
 	"on the ball": 2, "under the weather": -2}
 
-// check for special case idioms containing lexicon words
+// SpecialCaseIdioms check for special case idioms containing lexicon words
 var SpecialCaseIdioms = map[string]float64{"the shit": 3, "the bomb": 3, "bad ass": 1.5, "yeah right": -2,
 	"kiss of death": -1.5}
 
@@ -94,7 +96,7 @@ func negated(inputWords []string) bool {
 			}
 		}
 
-		if include_nt {
+		if includeNt {
 			if strings.Contains(word, "n't") {
 				return true
 			}
@@ -154,9 +156,9 @@ func scalarIncDec(word string, valence float64, isCapDiff bool) float64 {
 		//check if booster/dampener word is in ALLCAPS (while others aren't)
 		if word == strings.ToUpper(word) && isCapDiff {
 			if valence > 0 {
-				scalar += C_INCR
+				scalar += cIncr
 			} else {
-				scalar -= C_INCR
+				scalar -= cIncr
 			}
 		}
 	}
@@ -164,12 +166,14 @@ func scalarIncDec(word string, valence float64, isCapDiff bool) float64 {
 	return scalar
 }
 
+// SentiText ..
 type SentiText struct {
 	Text              string
 	WordsAndEmoticons []string
 	IsCapDiff         bool
 }
 
+// Init ..
 func (s *SentiText) Init(text string) {
 	s.Text = text
 	s.WordsAndEmoticons = s._wordsAndEmoticons()
@@ -255,14 +259,14 @@ func (s *SentiText) _wordsAndEmoticons() []string {
 	return wesCleaned
 }
 
-//Give a sentiment intensity score to sentences.
+// SentimentIntensityAnalyzer Give a sentiment intensity score to sentences.
 type SentimentIntensityAnalyzer struct {
-	LexiconMap      map[string]float64
-	EmojiLexiconMap map[string]string
+	LexiconMap        map[string]float64
+	EmojiLexiconMap   map[string]string
 	SpecialCaseIdioms map[string]float64
 }
 
-// Initialize sentiment analyzer with lexicons
+// Init sentiment analyzer with lexicons
 // if no filepaths passed to init, using default lexicon files
 func (sia *SentimentIntensityAnalyzer) Init(filenames ...string) error {
 	var lexiconFilename string
@@ -272,9 +276,8 @@ func (sia *SentimentIntensityAnalyzer) Init(filenames ...string) error {
 		lexiconFilename = filenames[0]
 		emojiLexiconFilename = filenames[1]
 	} else {
-		gopath := os.Getenv("GOPATH")
-		lexiconFilename = gopath + lexicon_file
-		emojiLexiconFilename = gopath + emoji_lexicon_file
+		lexiconFilename = lexiconFile
+		emojiLexiconFilename = emojiLexiconFile
 	}
 
 	// load lexicon file
@@ -292,7 +295,6 @@ func (sia *SentimentIntensityAnalyzer) Init(filenames ...string) error {
 	}
 
 	sia.EmojiLexiconMap = sia.makeEmojiLexiconMap(string(emojiLexicon))
-
 
 	//set special case idioms for analyzer
 	sia.SpecialCaseIdioms = SpecialCaseIdioms
@@ -356,7 +358,7 @@ func checkEmojisInText(text string) string {
 
 // find percent difference occurences (+2%,-2% etc.)
 // and replace it with placeholder from lexicon
-func checkPercentsInText(text string) string{
+func checkPercentsInText(text string) string {
 	rePos := regexp.MustCompile(`(\(|\s)*(\+(\d+|\d+(\.|\,)\d+)(\%|\s\%))(\)|\s)*`)
 	reNeg := regexp.MustCompile(`(\(|\s)*(\-(\d+|\d+(\.|\,)\d+)(\%|\s\%))(\)|\s)*`)
 
@@ -366,7 +368,7 @@ func checkPercentsInText(text string) string{
 	return text
 }
 
-// Return a float for sentiment strength based on the input text.
+// PolarityScores Return a float for sentiment strength based on the input text.
 // Positive values are positive valence, negative value are negative valence.
 func (sia *SentimentIntensityAnalyzer) PolarityScores(text string) map[string]float64 {
 	var textNoEmojiList []string
@@ -424,36 +426,36 @@ func (sia *SentimentIntensityAnalyzer) sentimentValence(valence float64, sentiTe
 		//check if sentiment laden word is in ALL CAPS (while others aren't)
 		if item == strings.ToUpper(item) && isCapDiff {
 			if valence > 0 {
-				valence += C_INCR
+				valence += cIncr
 			} else {
-				valence -= C_INCR
+				valence -= cIncr
 			}
 		}
 
-		for start_i := 0; start_i <= 2; start_i++ {
+		for start := 0; start <= 2; start++ {
 			//// dampen the scalar modifier of preceding words and emoticons
 			//// (excluding the ones that immediately preceed the item) based
 			//// on their distance from the current item.
 
-			if i <= start_i {
+			if i <= start {
 				continue
 			}
 
-			if _, ok := sia.LexiconMap[strings.ToLower(wordsAndEmoticons[i-(start_i+1)])]; !ok {
-				s := scalarIncDec(wordsAndEmoticons[i-(start_i+1)], valence, isCapDiff)
+			if _, ok := sia.LexiconMap[strings.ToLower(wordsAndEmoticons[i-(start+1)])]; !ok {
+				s := scalarIncDec(wordsAndEmoticons[i-(start+1)], valence, isCapDiff)
 
-				if start_i == 1 && s != 0 {
+				if start == 1 && s != 0 {
 					s *= 0.95
 				}
 
-				if start_i == 2 && s != 0 {
+				if start == 2 && s != 0 {
 					s *= 0.9
 				}
 
 				valence += s
-				valence = sia.negationCheck(valence, wordsAndEmoticons, start_i, i)
+				valence = sia.negationCheck(valence, wordsAndEmoticons, start, i)
 
-				if start_i == 2 {
+				if start == 2 {
 					valence = sia.specialIdiomsCheck(valence, wordsAndEmoticons, i)
 				}
 			}
@@ -471,12 +473,12 @@ func (sia *SentimentIntensityAnalyzer) leastCheck(valence float64, wordsAndEmoti
 	if i > 1 {
 		if _, ok := sia.LexiconMap[strings.ToLower(wordsAndEmoticons[i-1])]; !ok && strings.ToLower(wordsAndEmoticons[i-1]) == "least" {
 			if strings.ToLower(wordsAndEmoticons[i-2]) != "at" && strings.ToLower(wordsAndEmoticons[i-2]) != "very" {
-				valence = valence * N_SCALAR
+				valence = valence * nScalar
 			}
 		}
 	} else if i > 0 {
 		if _, ok := sia.LexiconMap[strings.ToLower(wordsAndEmoticons[i-1])]; !ok && strings.ToLower(wordsAndEmoticons[i-1]) == "least" {
-			valence = valence * N_SCALAR
+			valence = valence * nScalar
 		}
 	}
 
@@ -566,36 +568,36 @@ func (sia *SentimentIntensityAnalyzer) sentimentLadenIdiomsCheck(valence float64
 }
 
 //check for negations
-func (sia *SentimentIntensityAnalyzer) negationCheck(valence float64, wordsAndEmoticons []string, start_i int, i int) float64 {
+func (sia *SentimentIntensityAnalyzer) negationCheck(valence float64, wordsAndEmoticons []string, start int, i int) float64 {
 	var wordsAndEmoticonsLower []string
 
 	for _, w := range wordsAndEmoticons {
 		wordsAndEmoticonsLower = append(wordsAndEmoticonsLower, strings.ToLower(w))
 	}
 
-	if start_i == 0 {
-		if negated([]string{wordsAndEmoticonsLower[i-(start_i+1)]}) { // 1 word preceding lexicon word (w/o stopwords)
-			valence = valence * N_SCALAR
+	if start == 0 {
+		if negated([]string{wordsAndEmoticonsLower[i-(start+1)]}) { // 1 word preceding lexicon word (w/o stopwords)
+			valence = valence * nScalar
 		}
 	}
 
-	if start_i == 1 {
+	if start == 1 {
 		if wordsAndEmoticonsLower[i-2] == "never" && (wordsAndEmoticonsLower[i-1] == "so" || wordsAndEmoticonsLower[i-1] == "this") {
 			valence = valence * 1.25
 		} else if wordsAndEmoticonsLower[i-2] == "without" && wordsAndEmoticonsLower[i-1] == "doubt" {
 			valence = valence
-		} else if negated([]string{wordsAndEmoticonsLower[i-(start_i+1)]}) { // 2 words preceding the lexicon word position
-			valence = valence * N_SCALAR
+		} else if negated([]string{wordsAndEmoticonsLower[i-(start+1)]}) { // 2 words preceding the lexicon word position
+			valence = valence * nScalar
 		}
 	}
 
-	if start_i == 2 {
+	if start == 2 {
 		if wordsAndEmoticonsLower[i-3] == "never" && (wordsAndEmoticonsLower[i-2] == "so" || wordsAndEmoticonsLower[i-2] == "this") || (wordsAndEmoticonsLower[i-1] == "so" || wordsAndEmoticonsLower[i-1] == "this") {
 			valence = valence * 1.25
 		} else if wordsAndEmoticonsLower[i-3] == "without" && (wordsAndEmoticonsLower[i-2] == "doubt" || wordsAndEmoticonsLower[i-1] == "doubt") {
 			valence = valence
-		} else if negated([]string{wordsAndEmoticonsLower[i-(start_i+1)]}) { //3 words preceding the lexicon word position
-			valence = valence * N_SCALAR
+		} else if negated([]string{wordsAndEmoticonsLower[i-(start+1)]}) { //3 words preceding the lexicon word position
+			valence = valence * nScalar
 		}
 	}
 
