@@ -8,7 +8,7 @@ Original python implementation of VADER (https://github.com/cjhutto/vaderSentime
 
 ## Install:
 
-`go get github.com/rabingaire/go-vader`
+`go get github.com/rabingaire/vader`
 
 ## Example of usage:
 
